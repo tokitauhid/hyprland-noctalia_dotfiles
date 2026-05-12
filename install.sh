@@ -47,6 +47,25 @@ PACKAGES=(
     "fzf"
     "git"
     "ripgrep"
+    
+    # Dependencies parsed from configs
+    "playerctl"
+    "pamixer"
+    "satty"
+    "uwsm"
+    "libnotify"
+    "jq"
+    "polkit-gnome"
+    
+    # Optional/User Apps mentioned in configs
+    "steam"
+    "discord"
+    "code"
+    "helium-browser"
+    
+    # Fonts
+    "ttf-adwaita"
+    "ttf-jetbrains-mono-nerd"
 )
 
 echo "Installing required packages..."
