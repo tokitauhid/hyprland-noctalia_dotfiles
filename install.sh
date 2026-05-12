@@ -294,7 +294,7 @@ PACKAGES_CORE=(
   noctalia-shell nwg-displays
   bash fish starship bat btop eza fastfetch fd fzf git ripgrep
   playerctl pamixer satty uwsm libnotify jq polkit-gnome
-  ttf-adwaita ttf-jetbrains-mono-nerd
+  adwaita-fonts ttf-jetbrains-mono-nerd
   xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
   qt6ct wtype cmake
 )
