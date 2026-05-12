@@ -8,7 +8,7 @@ echo "Starting installation process for Hyprland + Noctalia environment..."
 
 # 1. Update the system
 echo "Updating package databases..."
-paru -Syu --noconfirm
+yay -Syu --noconfirm
 
 # 2. Install required packages
 PACKAGES=(
@@ -69,7 +69,7 @@ PACKAGES=(
 )
 
 echo "Installing required packages..."
-paru -S --needed --noconfirm "${PACKAGES[@]}"
+yay -S --needed --noconfirm "${PACKAGES[@]}"
 
 # 3. Copy configuration files to ~/.config
 echo "Deploying configuration files..."
