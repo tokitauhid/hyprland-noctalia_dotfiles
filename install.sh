@@ -27,16 +27,22 @@ for arg in "$@"; do
       cat <<'EOF'
 Usage: ./install.sh [options]
 
-  -y, --yes, --assume-yes   Non-interactive: defaults (no Chaotic AUR, no
-                            optional desktop apps, run system update, skip
-                            AUR helper install if none found — install fails).
+  -y, --yes, --assume-yes   Non-interactive: no Chaotic-AUR prompt; auto-builds
+                            paru if no AUR helper exists; runs full upgrade;
+                            installs core packages; optional packages/features only if
+                            DOTFILES_OPTIONAL is set (see below). Deployed
+                            configs under ~/.config rewrite /home/tokit to your
+                            HOME (repository files are not modified).
 
-  Chaotic AUR / AUR helper prompts are skipped when using -y unless you
-  pre-set: CHAOTIC_AUR=1  AUR_HELPER=paru|yay  (helper must exist in PATH).
+  With -y, set CHAOTIC_AUR=1 to add Chaotic AUR non-interactively.
 
 Environment:
-  CHAOTIC_AUR=0|1     Add Chaotic AUR repo (requires sudo).
-  AUR_HELPER=paru|yay Force which helper to use (must be in PATH).
+  CHAOTIC_AUR=0|1              Add Chaotic AUR (requires sudo) when 1.
+  AUR_HELPER=paru|yay          Force helper (must exist in PATH).
+  DOTFILES_OPTIONAL=none       With -y: skip optional packages/features (default).
+  DOTFILES_OPTIONAL=all        With -y: install every optional package and feature.
+  DOTFILES_OPTIONAL=a,b,...    With -y: comma-separated names, e.g.
+                               steam,discord,sddm-stack,hyprland-plugin-hyprexpo
 EOF
       exit 0
       ;;
@@ -245,7 +251,14 @@ ensure_aur_helper() {
 
   log_warn "No AUR helper found (paru / yay)."
   if [[ "$ASSUME_YES" -eq 1 ]]; then
-    log_err "Non-interactive mode: install paru or yay, or set AUR_HELPER=paru|yay and ensure it is in PATH."
+    log_step "Non-interactive mode: building and installing paru…"
+    install_aur_helper_from_aur paru
+    if command -v paru >/dev/null 2>&1; then
+      log_info "Using AUR helper: paru (auto-installed)"
+      echo paru
+      return
+    fi
+    log_err "Failed to auto-install paru. Install paru or yay, or set AUR_HELPER=paru|yay."
     exit 1
   fi
 
@@ -278,15 +291,224 @@ PACKAGES_CORE=(
   wl-clipboard cliphist grim slurp hyprshot
   kitty nautilus
   polkit polkit-kde-agent hyprpolkitagent
-  noctalia-shell sddm-theme-noctalia-git nwg-displays
+  noctalia-shell nwg-displays
   bash fish starship bat btop eza fastfetch fd fzf git ripgrep
   playerctl pamixer satty uwsm libnotify jq polkit-gnome
   ttf-adwaita ttf-jetbrains-mono-nerd
+  xdg-desktop-portal-hyprland xdg-desktop-portal-gtk
+  qt6ct wtype cmake
 )
 
-PACKAGES_OPTIONAL=(
-  steam discord code helium-browser
+# Optional: "package|title|one-line description" (asked one-by-one interactively;
+# under -y controlled by DOTFILES_OPTIONAL — see help).
+OPTIONAL_PACKAGES=(
+  "hyprland-plugin-hyprexpo|HyprExpo plugin (AUR)|Workspace overview (Super+D); matches the hyprexpo plugin block and avoids manual hyprpm builds."
+  "pipewire|PipeWire|Low-latency audio/video; use if you need sound on a minimal install."
+  "wireplumber|WirePlumber|Session manager for PipeWire (devices, routing, policies)."
+  "wlsunset|wlsunset|Blue-light / night temperature for Wayland; Noctalia Night Light can use it."
+  "power-profiles-daemon|power-profiles-daemon|Laptop power profiles (balanced / performance)."
+  "ddcutil|ddcutil|External monitor brightness over DDC/CI (optional Noctalia feature)."
+  "steam|Steam|Valve game client; your Hypr autostart runs steam -silent (needs [multilib] enabled)."
+  "discord|Discord|Voice/chat client; your Hypr autostart launches Discord."
+  "code|Visual Studio Code|GUI editor referenced as \$EDITOR in keybinds."
+  "helium-browser|Helium browser (AUR)|Chromium-based browser bound to Super+B in keybinds."
 )
+
+# Optional features: id|title|description (install matching packages + sudo /etc; id is not a pacman name).
+OPTIONAL_FEATURES=(
+  "sddm-stack|SDDM login screen|Copies repo sddm/ to /etc (same files as this maintainer's PC). Installs sddm, sddm-astronaut-theme, qt6-virtualkeyboard to match that config, then enables sddm.service (reboot or disable another DM)."
+)
+
+# Path baked into repo configs; rewritten only under ~/.config after copy (repo tree untouched).
+LEGACY_REPO_HOME="/home/tokit"
+
+escape_sed_repl() {
+  printf '%s' "$1" | sed 's/[\/&|]/\\&/g'
+}
+
+fixup_deployed_paths() {
+  local roots=(
+    "$CONFIG_DIR/hypr"
+    "$CONFIG_DIR/fish"
+    "$CONFIG_DIR/noctalia"
+    "$CONFIG_DIR/btop"
+    "$CONFIG_DIR/kitty"
+  )
+  local esc_home
+  esc_home="$(escape_sed_repl "$HOME")"
+  if [[ "$HOME" == "$LEGACY_REPO_HOME" ]]; then
+    log_info "HOME matches legacy snapshot ($LEGACY_REPO_HOME); skipping path rewrite."
+    return 0
+  fi
+  log_step "Rewriting $LEGACY_REPO_HOME → $HOME in deployed configs…"
+  local root fp
+  for root in "${roots[@]}"; do
+    [[ -e "$root" ]] || continue
+    while IFS= read -r -d '' fp; do
+      sed -i "s|${LEGACY_REPO_HOME}|${esc_home}|g" "$fp"
+    done < <(grep -rlIZF "$LEGACY_REPO_HOME" "$root" 2>/dev/null || true)
+  done
+}
+
+fixup_fish_cachyos_line() {
+  local f="$CONFIG_DIR/fish/config.fish"
+  [[ -f "$f" ]] || return 0
+  if grep -q '^if test -r /usr/share/cachyos-fish-config/cachyos-config.fish' "$f" 2>/dev/null; then
+    return 0
+  fi
+  if ! grep -Fqx 'source /usr/share/cachyos-fish-config/cachyos-config.fish' "$f" 2>/dev/null; then
+    return 0
+  fi
+  log_step "Making Fish CachyOS include optional (skip if file missing on this distro)…"
+  awk '
+    /^source \/usr\/share\/cachyos-fish-config\/cachyos-config\.fish$/ {
+      print "if test -r /usr/share/cachyos-fish-config/cachyos-config.fish"
+      print "    source /usr/share/cachyos-fish-config/cachyos-config.fish"
+      print "end"
+      next
+    }
+    { print }
+  ' "$f" >"${f}.tmp.$$" && mv "${f}.tmp.$$" "$f"
+}
+
+optional_allowed_noninteractive() {
+  local token="$1"
+  local spec="${DOTFILES_OPTIONAL:-none}"
+  if [[ "$spec" == "all" ]]; then
+    return 0
+  fi
+  if [[ "$spec" == "none" || -z "${spec//[[:space:]]/}" ]]; then
+    return 1
+  fi
+  local IFS=',' p
+  read -ra parts <<< "$spec"
+  for p in "${parts[@]}"; do
+    p="${p//[[:space:]]/}"
+    [[ "$p" == "$token" ]] && return 0
+  done
+  return 1
+}
+
+gather_optional_install_list() {
+  local -n _gather_out="$1"
+  local entry pkg title desc
+  _gather_out=()
+  if [[ "$ASSUME_YES" -eq 1 ]]; then
+    log_info "Optional packages/features in -y mode: set DOTFILES_OPTIONAL=all, none, or comma-separated names (./install.sh -h)."
+  fi
+  for entry in "${OPTIONAL_PACKAGES[@]}"; do
+    IFS='|' read -r pkg title desc <<< "$entry"
+    if pacman -Qi "$pkg" &>/dev/null; then
+      log_info "Already installed (skipping prompt): $pkg"
+      continue
+    fi
+    if [[ "$ASSUME_YES" -eq 1 ]]; then
+      if optional_allowed_noninteractive "$pkg"; then
+        _gather_out+=("$pkg")
+      fi
+      continue
+    fi
+    echo >&2
+    log_info "Optional — $title"
+    log_info "  $desc"
+    if prompt_yn "Install package «$pkg»?" "n"; then
+      _gather_out+=("$pkg")
+    fi
+  done
+}
+
+install_optional_packages() {
+  local aur="$1"
+  shift
+  local pkgs=("$@")
+  local p
+  ((${#pkgs[@]})) || return 0
+  log_step "Installing selected optional packages…"
+  for p in "${pkgs[@]}"; do
+    log_step "Optional: $p …"
+    if [[ "$ASSUME_YES" -eq 1 ]]; then
+      "$aur" -S --needed --noconfirm "$p" || log_warn "Install failed for $p (see above). Continuing."
+    else
+      "$aur" -S --needed "$p" || log_warn "Install failed for $p (see above). Continuing."
+    fi
+  done
+}
+
+gather_optional_feature_list() {
+  local -n _feat_out="$1"
+  local entry id title desc
+  _feat_out=()
+  for entry in "${OPTIONAL_FEATURES[@]}"; do
+    IFS='|' read -r id title desc <<< "$entry"
+    if [[ "$ASSUME_YES" -eq 1 ]]; then
+      if optional_allowed_noninteractive "$id"; then
+        _feat_out+=("$id")
+      fi
+      continue
+    fi
+    echo >&2
+    log_info "Optional feature — $title"
+    log_info "  $desc"
+    if prompt_yn "Apply optional feature «$id»?" "n"; then
+      _feat_out+=("$id")
+    fi
+  done
+}
+
+install_feature_sddm_stack() {
+  local aur="$1"
+  if [[ ! -d "$REPO_DIR/sddm" ]] || [[ ! -f "$REPO_DIR/sddm/sddm.conf" ]]; then
+    log_warn "Repository is missing sddm/ (or sddm.conf); skipping SDDM setup."
+    return 1
+  fi
+  log_step "SDDM stack: packages sddm, sddm-astronaut-theme, qt6-virtualkeyboard (match repo sddm/ config)…"
+  if [[ "$ASSUME_YES" -eq 1 ]]; then
+    "$aur" -S --needed --noconfirm sddm sddm-astronaut-theme qt6-virtualkeyboard \
+      || log_warn "One or more SDDM stack packages failed (see above). Continuing with /etc copy if possible."
+  else
+    "$aur" -S --needed sddm sddm-astronaut-theme qt6-virtualkeyboard \
+      || log_warn "One or more SDDM stack packages failed (see above). Continuing with /etc copy if possible."
+  fi
+  have_sudo
+  local ts
+  ts="$(date +%Y%m%d%H%M%S)"
+  log_step "Copying $REPO_DIR/sddm/ → /etc (sudo; existing files get .bak.$ts)…"
+  if [[ -f /etc/sddm.conf ]]; then
+    sudo cp -a /etc/sddm.conf "/etc/sddm.conf.bak.$ts"
+  fi
+  sudo install -Dm644 "$REPO_DIR/sddm/sddm.conf" /etc/sddm.conf
+  sudo install -d /etc/sddm.conf.d
+  local snippet bn
+  shopt -s nullglob
+  for snippet in "$REPO_DIR"/sddm/sddm.conf.d/*.conf; do
+    bn="$(basename "$snippet")"
+    if [[ -f "/etc/sddm.conf.d/$bn" ]]; then
+      sudo cp -a "/etc/sddm.conf.d/$bn" "/etc/sddm.conf.d/${bn}.bak.$ts"
+    fi
+    sudo install -Dm644 "$snippet" "/etc/sddm.conf.d/$bn"
+  done
+  shopt -u nullglob
+  if sudo systemctl enable sddm 2>/dev/null; then
+    log_info "systemd: sddm.service enabled. Reboot or disable another display manager to use SDDM."
+  else
+    log_warn "Could not enable sddm.service (run: sudo systemctl enable sddm)."
+  fi
+}
+
+install_optional_features() {
+  local aur="$1"
+  shift
+  local ids=("$@")
+  local id
+  ((${#ids[@]})) || return 0
+  log_step "Applying selected optional features…"
+  for id in "${ids[@]}"; do
+    case "$id" in
+      sddm-stack) install_feature_sddm_stack "$aur" ;;
+      *) log_warn "Unknown optional feature «$id» — skipped." ;;
+    esac
+  done
+}
 
 backup_config_path() {
   local target="$1"
@@ -323,7 +545,10 @@ deploy_configs() {
 
   backup_config_path "$CONFIG_DIR/starship.toml"
   cp -a "$REPO_DIR/starship.toml" "$CONFIG_DIR/"
-  log_info "Configuration files installed."
+
+  fixup_deployed_paths
+  fixup_fish_cachyos_line
+  log_info "Configuration files installed (with local path / Fish fixups applied under $CONFIG_DIR only)."
 }
 
 main() {
@@ -356,19 +581,16 @@ main() {
   fi
 
   local optional_list=()
-  if [[ "$ASSUME_YES" -eq 1 ]]; then
-    log_info "Skipping optional packages (steam, discord, code, helium-browser) in non-interactive mode."
-  else
-    echo
-    log_info "Optional packages (from your previous script): ${PACKAGES_OPTIONAL[*]}"
-    if prompt_yn "Install these optional packages?" "n"; then
-      optional_list=("${PACKAGES_OPTIONAL[@]}")
-    fi
-  fi
-  if ((${#optional_list[@]})); then
-    log_step "Installing optional packages…"
-    "$aur" -S --needed "${optional_list[@]}"
-  fi
+  echo
+  log_step "Optional packages (not required for a working Hyprland + Noctalia stack)"
+  gather_optional_install_list optional_list
+  install_optional_packages "$aur" "${optional_list[@]}"
+
+  local optional_features=()
+  echo
+  log_step "Optional features (packages + system paths such as /etc)"
+  gather_optional_feature_list optional_features
+  install_optional_features "$aur" "${optional_features[@]}"
 
   echo
   if [[ "$ASSUME_YES" -eq 1 ]] || prompt_yn "Copy repository configs into ~/.config (existing dirs are renamed to *.bak.TIMESTAMP)?" "y"; then
@@ -379,6 +601,7 @@ main() {
 
   echo
   log_info "Done. Log out, pick Hyprland at the display manager, or start Hyprland from a TTY per your setup."
+  log_info "Per-machine: edit ~/.config/hypr/monitors.conf (e.g. with nwg-displays) if displays differ from your main PC."
 }
 
 main "$@"
