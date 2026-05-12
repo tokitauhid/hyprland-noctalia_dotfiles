@@ -1,0 +1,8 @@
+*.bak
+*.save
+*.swp
+*.tmp
+*~
+.stfolder/
+fish_variables*
+!fish/fish_variables
