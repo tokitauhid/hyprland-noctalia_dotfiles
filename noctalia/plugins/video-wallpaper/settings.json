@@ -1,0 +1,42 @@
+{
+  "activeBackend": "qt6-multimedia",
+  "automationMode": "random",
+  "automationTime": 300,
+  "fillMode": "fit",
+  "mpvSocket": "/tmp/mpv-socket",
+  "profile": "default",
+  "volume": 1,
+  "wallpapersFolder": "/home/tokit/Pictures/My-Personal-Wallpaper-Collection/Animated",
+  "thumbCacheReady": true,
+  "HDMI-A-1": {
+    "currentWallpaper": "/home/tokit/Pictures/My-Personal-Wallpaper-Collection/Animated/artemis-2-moon-eclipse.3840x2160.mp4",
+    "isPlaying": true,
+    "noctaliaWallpaper": "/home/tokit/Pictures/My-Personal-Wallpaper-Collection/Catppuccin/Mocha/moca-cat-wallhaven-xe8grd_3840x2160.png",
+    "volume": 0,
+    "automation": false,
+    "automationMode": "random",
+    "automationTime": 3600,
+    "hardwareAcceleration": false,
+    "profile": "default",
+    "fillMode": "fit",
+    "orientation": 0,
+    "isMuted": true
+  },
+  "HDMI-A-2": {
+    "currentWallpaper": "/home/tokit/Pictures/My-Personal-Wallpaper-Collection/Animated/artemis-2-moon-eclipse.3840x2160.mp4",
+    "isPlaying": true,
+    "noctaliaWallpaper": "/home/tokit/Pictures/My-Personal-Wallpaper-Collection/Catppuccin/Mocha/moca-cat-wallhaven-xe8grd_3840x2160.png",
+    "volume": 0,
+    "automation": false,
+    "automationMode": "random",
+    "automationTime": 3600,
+    "hardwareAcceleration": false,
+    "profile": "default",
+    "fillMode": "fit",
+    "orientation": 0,
+    "isMuted": true
+  },
+  "enabled": true,
+  "monitorSpecific": false,
+  "automationCustomTime": []
+}

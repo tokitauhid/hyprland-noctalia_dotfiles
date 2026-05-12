@@ -1,0 +1,23 @@
+{
+  "arrowType": "arrow-narrow",
+  "byteThresholdActive": 1024,
+  "fontSizeModifier": 0.8,
+  "iconSizeModifier": 0.8,
+  "showNumbers": true,
+  "spacingInbetween": 0,
+  "useCustomColors": false,
+  "useCustomFont": false,
+  "customFontBold": false,
+  "customFontItalic": false,
+  "horizontalLayout": false,
+  "forceMegabytes": false,
+  "minWidth": 0,
+  "contentMargin": 6,
+  "customFontFamily": "",
+  "colorSilent": "#1e1f24",
+  "colorTx": "#bcc6e5",
+  "colorRx": "#b0c6ff",
+  "colorText": "#4dc4c6d2",
+  "colorFont": "#e3e2e8",
+  "colorBackground": "#1e1f24"
+}

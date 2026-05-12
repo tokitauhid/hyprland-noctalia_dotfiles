@@ -1,0 +1,10 @@
+{
+  "autoLaunchSteam": true,
+  "friendsWidthPercent": 10,
+  "mainWidthPercent": 60,
+  "chatWidthPercent": 25,
+  "gapSize": 10,
+  "topMarginPercent": 2.5,
+  "windowHeightPercent": 95,
+  "enableChatNotifications": true
+}
